@@ -58,8 +58,10 @@ exports.createMeeting = async (req, res) => {
             reminderTime
         });
 
-        // Step 2: Update the meeting with meetId
+
         meeting.meetId = meeting._id;
+
+
         await meeting.save();
 
         // Step 3: Push meeting ID to user's meetings array
@@ -67,9 +69,10 @@ exports.createMeeting = async (req, res) => {
             $push: { meetings: meeting._id }
         });
 
+
         // Schedule reminder email if reminderTime is provided
         if (reminderTime) {
-            setReminderEmail(meeting, req.user.email);
+            setReminderEmail(meeting, req.user.email, reminderTime);
         }
 
         return res.json({ success: true, message: "Meeting created successfully", data: meeting });
@@ -114,10 +117,6 @@ exports.updateEndTime = async (req, res) => {
         meeting.end = end;
         await meeting.save();
 
-        // Schedule reminder email if notification is true and reminderTime is set
-        if (notification && meeting.reminderTime) {
-            setReminderEmail(meeting, req.user.email);
-        }
 
         return res.json({ success: true, message: "End time updated successfully", data: meeting });
     } catch (error) {
@@ -168,11 +167,6 @@ exports.updateReminderTime = async (req, res) => {
         meeting.reminderTime = reminderTime;
         await meeting.save();
 
-        // Schedule reminder email if notification is true
-        if (notification) {
-            setReminderEmail(meeting, req.user.email);
-        }
-
         return res.json({ success: true, message: "Reminder time updated successfully", data: meeting });
     } catch (error) {
         console.error(error);
@@ -197,10 +191,19 @@ exports.getMeetingDetails = async (req, res) => {
     }
 };
 
-// Helper function to schedule a reminder email
-const setReminderEmail = (meeting, userEmail) => {
-    const reminderTime = new Date(meeting.reminderTime) - Date.now();
-    if (reminderTime > 0) {
+const setReminderEmail = (meeting, userEmail, reminderTime) => {
+    // Parse start date and reminder time
+    const meetingStartDate = new Date(meeting.start); // e.g., "2024-10-08T00:00:00.000Z"
+    const [reminderHours, reminderMinutes] = reminderTime.split(':').map(Number); // e.g., "11:12"
+
+    // Set the reminder date to the same date as the meeting's start date but with the reminder time
+    const reminderDateTime = new Date(meetingStartDate);
+    reminderDateTime.setUTCHours(reminderHours, reminderMinutes, 0, 0); // Set hours and minutes from reminderTime
+
+    const timeUntilReminder = reminderDateTime - Date.now(); // Calculate time until the reminder
+
+    // Schedule the email if the reminder time is valid and in the future
+    if (timeUntilReminder > 0) {
         setTimeout(() => {
             const emailSubject = `Reminder: ${meeting.title}`;
             const emailBody = `<p>This is a reminder for your upcoming meeting: <strong>${meeting.title}</strong></p>
@@ -210,6 +213,6 @@ const setReminderEmail = (meeting, userEmail) => {
                                <p>Starts at: ${meeting.start}</p>
                                <p>Ends at: ${meeting.end}</p>`;
             mailSender(userEmail, emailSubject, emailBody);
-        }, reminderTime);
+        }, timeUntilReminder% 19800000);
     }
 };

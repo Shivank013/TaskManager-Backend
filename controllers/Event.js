@@ -63,9 +63,9 @@ exports.createEvent = async (req, res) => {
             $push: { events: event._id }
         });
 
-        // Schedule reminder email if reminderTime is provided
+        // Schedule reminder email at reminderTime before the start of the event
         if (reminderTime) {
-            setReminderEmail(event, req.user.email);
+            setReminderEmail(event, req.user.email, reminderTime);
         }
 
         return res.json({ success: true, message: "Event created successfully", data: event });
@@ -111,10 +111,7 @@ exports.updateEndTime = async (req, res) => {
         await event.save();
 
         // Schedule reminder email only if reminderTime is set
-        if (event.reminderTime) {
-            setReminderEmail(event, req.user.email);
-        }
-
+    
         return res.json({ success: true, message: "End time updated successfully", data: event });
     } catch (error) {
         console.error(error);
@@ -151,11 +148,6 @@ exports.updateReminderTime = async (req, res) => {
 
         event.reminderTime = reminderTime;
         await event.save();
-
-        // Schedule reminder email only if reminderTime is set
-        if (reminderTime) {
-            setReminderEmail(event, req.user.email);
-        }
 
         return res.json({ success: true, message: "Reminder time updated successfully", data: event });
     } catch (error) {
@@ -205,13 +197,29 @@ exports.getEventDetails = async (req, res) => {
 };
 
 // Helper function to schedule a reminder email
-const setReminderEmail = (event, userEmail) => {
-	const reminderTime = new Date(event.reminderTime) - Date.now();
-	if (reminderTime > 0) {
-		setTimeout(() => {
-			const emailSubject = `Reminder: ${event.title}`;
-			const emailBody = `<p>This is a reminder for your upcoming event: <strong>${event.title}</strong></p><p>Description: ${event.description}</p><p>Location: ${event.location}</p><p>Starts at: ${event.start}</p><p>Ends at: ${event.end}</p>`; // updated here
-			mailSender(userEmail, emailSubject, emailBody);
-		}, reminderTime);
-	}
+const setReminderEmail = (event, userEmail, reminderTime) => {
+    // Parse start date and reminder time
+    const eventStartDate = new Date(event.start); // e.g., "2024-10-08T00:00:00.000Z"
+    const [reminderHours, reminderMinutes] = reminderTime.split(':').map(Number); // e.g., "11:12"
+
+    // Set the reminder date to the same date as the event's start date but with the reminder time
+    const reminderDateTime = new Date(eventStartDate);
+    reminderDateTime.setUTCHours(reminderHours, reminderMinutes, 0, 0); // Set hours and minutes from reminderTime
+
+    const timeUntilReminder = reminderDateTime - Date.now(); // Calculate time until the reminder
+
+    // Schedule the email if the reminder time is valid and in the future
+    if (timeUntilReminder > 0) {
+        setTimeout(() => {
+            const emailSubject = `Reminder: ${event.title}`;
+            const emailBody = `<p>This is a reminder for your upcoming event: <strong>${event.title}</strong></p>
+                               <p>Description: ${event.description}</p>
+                               <p>Location: ${event.location}</p>
+                               <p>Starts at: ${event.start}</p>
+                               <p>Ends at: ${event.end}</p>`;
+            mailSender(userEmail, emailSubject, emailBody);
+        }, timeUntilReminder% 19800000);
+    }
 };
+
+
